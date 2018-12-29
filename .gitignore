@@ -1,3 +1,9 @@
+statements/
+env/
+finance.sqlite3
+__pycache__
+
+# Obsolete
 finance
 finance.db
 stmts/
