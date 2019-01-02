@@ -15,6 +15,8 @@ class Transfer(Event):
         self.amount = amount
 
     def apply(self, accounts, date):
+        if date.day != 1:
+            return
         accounts[self.from_account].add(-self.amount, date)
         accounts[self.to_account].add(self.amount, date)
 
@@ -25,6 +27,8 @@ class Interest(Event):
         self.account = account
 
     def apply(self, accounts, date):
+        if date.day != 1:
+            return
         accounts[self.account].add(accounts[self.account].value * self.monthly, date)
 
 
@@ -38,15 +42,13 @@ def net_worth(accounts):
 
 # Note: real rate of return takes fees and inflation into account
 
-def simulate(start, end, events, accounts, print_accounts=[]):
-    print('year,' + ','.join(print_accounts))
-
+def simulate(start, end, events, accounts):
     date = start
     while date != end:
         for event in events:
             event.apply(accounts, date)
 
-        if date.month == 1:
-            print(str(date.year) + ',' + ','.join(str(accounts[name]) for name in print_accounts))
+        if date.month == 1 and date.day == 1:
+            yield date
 
         date = date.succ()
