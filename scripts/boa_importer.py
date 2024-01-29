@@ -1,4 +1,12 @@
-#!python
+#!/usr/bin/env python
+
+# First create an account:
+#     ./manage.py
+#     from models.models import *
+#     Account(name="Credit Card", currency="USD").save()
+#
+# Usage:
+#     scripts/boa_importer.py 'Credit Card' "statements/*.csv"
 
 from collections import namedtuple
 from datetime import datetime
@@ -23,13 +31,20 @@ _BoaTransaction = namedtuple('BoaTransaction', [
     'amount',
 ])
 
+def _int_or_none(x):
+    try:
+        return int(x)
+    except ValueError:
+        return None
+
 
 class BoaTransaction(_BoaTransaction):
+
     @classmethod
     def from_csv(cls, row):
         return cls(
                 make_aware(datetime.strptime(row[0], '%m/%d/%Y')),
-                int(row[1]),
+                _int_or_none(row[1]),
                 row[2],
                 row[3],
                 Decimal(row[4]),
@@ -71,13 +86,16 @@ def main():
     account_name = sys.argv[1]
     account = Account.objects.get(name=account_name)
 
+    total_transactions = []
     for arg in sys.argv[2:]:
         print('Reading %s...' % arg)
-        transactions = ParseFile(arg)
-        print('  Found %s transactions' % len(transactions))
-        print('  Writing to database...')
-        SaveAll(account, transactions)
-        print('  Saved %s transactions' % len(transactions))
+        new_transactions = ParseFile(arg)
+        print('  Found %s transactions' % len(new_transactions))
+        total_transactions += new_transactions
+
+    print('Writing to database...')
+    SaveAll(account, total_transactions)
+    print('Saved %s transactions' % len(total_transactions))
 
 
 if __name__ == '__main__':
