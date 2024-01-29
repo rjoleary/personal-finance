@@ -50,8 +50,9 @@ class BoaTransaction(_BoaTransaction):
                 Decimal(row[4]),
         )
 
-    def to_transaction(self):
+    def to_transaction(self, account):
         return Transaction(
+                account=account,
                 date=self.posted_date,
                 description=self.payee,
                 amount=self.amount,
@@ -76,10 +77,7 @@ def ParseFile(filename):
 
 @atomic
 def SaveAll(account, transactions):
-    for t in transactions:
-        t = t.to_transaction()
-        t.account = account
-        t.save()
+    return Transaction.objects.bulk_create([t.to_transaction(account) for t in transactions])
 
 
 def main():
