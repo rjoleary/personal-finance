@@ -6,7 +6,7 @@
 #     Account(name="Credit Card", currency="USD").save()
 #
 # Usage:
-#     scripts/boa_importer.py 'Credit Card' "statements/*.csv"
+#     scripts/importer.py 'Credit Card' statements/*
 
 from collections import namedtuple
 from datetime import datetime
@@ -22,6 +22,12 @@ from models.models import Account, Category, Transaction
 from django.db.transaction import atomic
 from django.utils.timezone import make_aware
 
+def _int_or_none(x):
+    try:
+        return int(x)
+    except ValueError:
+        return None
+
 
 _BoaTransaction = namedtuple('BoaTransaction', [
     'posted_date',
@@ -31,23 +37,17 @@ _BoaTransaction = namedtuple('BoaTransaction', [
     'amount',
 ])
 
-def _int_or_none(x):
-    try:
-        return int(x)
-    except ValueError:
-        return None
-
-
 class BoaTransaction(_BoaTransaction):
+    header = 'Posted Date,Reference Number,Payee,Address,Amount'
 
     @classmethod
     def from_csv(cls, row):
         return cls(
-                make_aware(datetime.strptime(row[0], '%m/%d/%Y')),
-                _int_or_none(row[1]),
-                row[2],
-                row[3],
-                Decimal(row[4]),
+                posted_date=make_aware(datetime.strptime(row[0], '%m/%d/%Y')),
+                reference_number=_int_or_none(row[1]),
+                payee=row[2],
+                address=row[3],
+                amount=Decimal(row[4]),
         )
 
     def to_transaction(self, account):
@@ -59,15 +59,54 @@ class BoaTransaction(_BoaTransaction):
         )
 
 
+_ChaseTransaction = namedtuple('ChaseTransaction', [
+    'transaction_date',
+    'post_date',
+    'description',
+    'category',
+    'type',
+    'amount',
+    'memo',
+])
+
+class ChaseTransaction(_ChaseTransaction):
+    header = 'Transaction Date,Post Date,Description,Category,Type,Amount,Memo'
+
+    @classmethod
+    def from_csv(cls, row):
+        return cls(
+                transaction_date=make_aware(datetime.strptime(row[0], '%m/%d/%Y')),
+                post_date=make_aware(datetime.strptime(row[1], '%m/%d/%Y')),
+                description=row[2],
+                category=row[3],
+                type=row[4],
+                amount=Decimal(row[5]),
+                memo=row[6],
+        )
+
+    def to_transaction(self, account):
+        return Transaction(
+                account=account,
+                date=self.post_date,
+                description=self.description,
+                amount=self.amount,
+        )
+
+
 def Parse(fileobj):
-    expected_header = 'Posted Date,Reference Number,Payee,Address,Amount'
-    if fileobj.read(len(expected_header)) != expected_header:
-        raise RuntimeError('This is not a BOA file or the CSV header has changed')
+    # Check which parser matches the header.
+    header = fileobj.readline().strip()
+    parsers = [p for p in [BoaTransaction, ChaseTransaction] if p.header == header]
+    if len(parsers) == 0:
+        raise RuntimeError('The file header %r is unrecognized' % header)
+    if len(parsers) > 1:
+        raise RuntimeError('The file header %r matches multiple parsers' % header)
     fileobj.seek(0)
+    parser = parsers[0]
 
     reader = csv.reader(fileobj)
-    next(reader)
-    return [BoaTransaction.from_csv(row) for row in reader]
+    next(reader)  # skip the header
+    return [parser.from_csv(row) for row in reader]
 
 
 def ParseFile(filename):
